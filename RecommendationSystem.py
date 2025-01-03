@@ -1,4 +1,3 @@
-import os
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -31,23 +30,7 @@ print("\nPearson Correlation Matrix (sample):")
 print(pearson_sim.iloc[:5, :5])  # Display a sample for readability
 
 # Step 3: Save the similarity matrices for later use
-# Check if the "csv" folder exists
-folder_path = "csv"
-if not os.path.exists(folder_path):
-    print(f"Creating the folder: {folder_path}")
-    os.makedirs(folder_path)
+cosine_sim_df.to_csv("cosine_similarity.csv", index=True)
+pearson_sim.to_csv("pearson_similarity.csv", index=True)
 
-# Save the CSV files
-print("Saving cosine similarity matrix...")
-cosine_sim_path = os.path.join(folder_path, "cosine_similarity.csv")
-cosine_sim_df.to_csv(cosine_sim_path, index=True)
-
-print("Saving Pearson similarity matrix...")
-pearson_sim_path = os.path.join(folder_path, "pearson_similarity.csv")
-pearson_sim.to_csv(pearson_sim_path, index=True)
-
-print(f"Cosine similarity matrix saved at: {cosine_sim_path}")
-print(f"Pearson similarity matrix saved at: {pearson_sim_path}")
-print("Process completed successfully!")
-
-
+print("\nCosine and Pearson similarity matrices saved successfully.")
