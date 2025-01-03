@@ -1,6 +1,73 @@
+import numpy as np
 import os
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
+
+def predict_weighted_average(user_id, item_id, user_item_matrix, similarity_matrix, N=10):
+    """
+    Predict the rating for a given user and item using the weighted average of the N nearest neighbors.
+    Similarity is used as the weight.
+    """
+    # Get the similarity scores for the target item
+    item_similarities = similarity_matrix[item_id]
+    
+    # Get the user's ratings
+    user_ratings = user_item_matrix.loc[user_id]
+    
+    # Combine similarities and ratings for non-zero ratings
+    rated_items = user_ratings[user_ratings > 0].index
+    similarities = item_similarities[rated_items]
+    ratings = user_ratings[rated_items]
+    
+    # Select the N nearest neighbors
+    top_neighbors = similarities.nlargest(N)
+    top_ratings = ratings[top_neighbors.index]
+    
+    # Compute weighted average
+    if top_neighbors.sum() > 0:
+        prediction = np.dot(top_neighbors, top_ratings) / top_neighbors.sum()
+    else:
+        prediction = 0  # Default prediction if no neighbors exist
+
+    return prediction
+
+
+def predict_with_popularity(user_id, item_id, user_item_matrix, similarity_matrix, item_popularity, N=10, favor_popular=True):
+    """
+    Predict the rating with a weighting function that adjusts based on item popularity.
+    `favor_popular=True` favors popular items; `favor_popular=False` penalizes them.
+    """
+    # Get the similarity scores for the target item
+    item_similarities = similarity_matrix[item_id]
+    
+    # Get the user's ratings
+    user_ratings = user_item_matrix.loc[user_id]
+    
+    # Combine similarities and ratings for non-zero ratings
+    rated_items = user_ratings[user_ratings > 0].index
+    similarities = item_similarities[rated_items]
+    ratings = user_ratings[rated_items]
+    
+    # Adjust weights based on popularity
+    popularity_weights = item_popularity[rated_items]
+    if favor_popular:
+        adjusted_weights = similarities * popularity_weights
+    else:
+        adjusted_weights = similarities / (popularity_weights + 1)  # Avoid division by zero
+    
+    # Select the N nearest neighbors
+    top_neighbors = adjusted_weights.nlargest(N)
+    top_ratings = ratings[top_neighbors.index]
+    
+    # Compute weighted average
+    if top_neighbors.sum() > 0:
+        prediction = np.dot(top_neighbors, top_ratings) / top_neighbors.sum()
+    else:
+        prediction = 0  # Default prediction if no neighbors exist
+
+    return prediction
+
+
 
 # Step 1: Load the dataset and prepare the User-Item matrix
 # Make sure 'filtered_ratings.csv' is in the same directory
@@ -48,3 +115,17 @@ pearson_sim.to_csv(pearson_sim_path, index=True)
 print(f"Cosine similarity matrix saved at: {cosine_sim_path}")
 print(f"Pearson similarity matrix saved at: {pearson_sim_path}")
 print("Process completed successfully!")
+
+# Compute item popularity
+item_popularity = ratings['movieId'].value_counts()
+
+# Make predictions
+pred_cosine = predict_weighted_average(user_id=1, item_id=2, user_item_matrix=user_item_matrix_filled, similarity_matrix=cosine_sim_df)
+pred_popular = predict_with_popularity(user_id=1, item_id=2, user_item_matrix=user_item_matrix_filled, similarity_matrix=cosine_sim_df, item_popularity=item_popularity, favor_popular=True)
+pred_unpopular = predict_with_popularity(user_id=1, item_id=2, user_item_matrix=user_item_matrix_filled, similarity_matrix=cosine_sim_df, item_popularity=item_popularity, favor_popular=False)
+
+print(f"Predicted rating (cosine, N neighbors): {pred_cosine}")
+print(f"Predicted rating (favor popular): {pred_popular}")
+print(f"Predicted rating (favor unpopular): {pred_unpopular}")
+
+
