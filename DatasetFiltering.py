@@ -8,13 +8,13 @@ print("Dataset Preview:")
 print(ratings.head())
 
 # Filter movies with at least M ratings
-M = 50
+M = 100
 movie_counts = ratings['movieId'].value_counts()
 filtered_movies = movie_counts[movie_counts >= M].index
 ratings = ratings[ratings['movieId'].isin(filtered_movies)]
 
 # Filter users with at least M' ratings
-M_prime = 40  
+M_prime = 100  
 user_counts = ratings['userId'].value_counts()
 filtered_users = user_counts[user_counts >= M_prime].index
 ratings = ratings[ratings['userId'].isin(filtered_users)]
