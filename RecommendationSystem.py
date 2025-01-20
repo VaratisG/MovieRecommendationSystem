@@ -11,16 +11,13 @@ from tabulate import tabulate
 
 warnings.filterwarnings('ignore')
 
-
 # Load the dataset
 ratings = pd.read_csv("csv/ratings.csv")
-
 
 # Split ratings into training and testing
 def train_test_split_ratings(ratings, test_size=0.2, random_state=42):
     train, test = train_test_split(ratings, test_size=test_size, random_state=random_state)
     return train, test
-
 
 # Create sparse matrix
 def create_sparse_matrix(ratings_df):
@@ -28,7 +25,6 @@ def create_sparse_matrix(ratings_df):
     user_item_matrix = ratings_df.pivot_table(index='userId', columns='movieId', values='rating', fill_value=0)
     sparse_matrix = csr_matrix(user_item_matrix.values)
     return sparse_matrix, list(user_item_matrix.columns), list(user_item_matrix.index)
-
 
 # Compute Cosine similarity and Pearson
 def compute_similarity(sparse_matrix, method='cosine'):
@@ -45,13 +41,11 @@ def compute_similarity(sparse_matrix, method='cosine'):
 
         with np.errstate(divide='ignore', invalid='ignore'):
             pearson_corr = covariance / np.outer(std_dev, std_dev)
-            pearson_corr[std_dev == 0, :] = 0
-            pearson_corr[:, std_dev == 0] = 0
+            pearson_corr[np.isnan(pearson_corr)] = 0
 
-        return csr_matrix(np.nan_to_num(pearson_corr))
+        return csr_matrix(pearson_corr)
     else:
         raise ValueError("Invalid similarity method. Choose 'cosine' or 'pearson'.")
-
 
 # Prediction functions
 def predict_weighted_average(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, N=5):
@@ -74,15 +68,53 @@ def predict_weighted_average(user_id, item_id, train_sparse_matrix, movie_ids, u
 
     return np.dot(relevant_ratings, relevant_similarities) / np.sum(relevant_similarities)
 
-
-def predict_with_popularity(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, favor_popular=True, N=5):
-    prediction = predict_weighted_average(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, N)
-    if np.isnan(prediction):
+def predict_weighted_popularity_favor_popular(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, N=5):
+    """Weighted average with more weight given to popular items."""
+    if item_id not in movie_ids or user_id not in user_ids:
         return np.nan
 
-    popularity_score = item_popularity[item_id] if item_id in item_popularity else 0
-    return prediction + (0.1 * popularity_score if favor_popular else -0.1 * popularity_score)
+    user_index = user_ids.index(user_id)
+    item_index = movie_ids.index(item_id)
 
+    similar_items = similarity_matrix[item_index].toarray().flatten()
+    similar_items[item_index] = 0
+    top_similar_indices = np.argsort(similar_items)[::-1][:N]
+
+    user_ratings = train_sparse_matrix[user_index].toarray().flatten()
+    relevant_ratings = user_ratings[top_similar_indices]
+    relevant_similarities = similar_items[top_similar_indices]
+    relevant_popularities = np.array([item_popularity.get(movie_ids[i], 0) for i in top_similar_indices])
+
+    weights = relevant_similarities * (1 + np.log1p(relevant_popularities))  # Log scaling for popularity
+
+    if np.sum(weights) == 0:
+        return np.nan
+
+    return np.dot(relevant_ratings, weights) / np.sum(weights)
+
+def predict_weighted_popularity_favor_unpopular(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, N=5):
+    """Weighted average with more weight given to unpopular items."""
+    if item_id not in movie_ids or user_id not in user_ids:
+        return np.nan
+
+    user_index = user_ids.index(user_id)
+    item_index = movie_ids.index(item_id)
+
+    similar_items = similarity_matrix[item_index].toarray().flatten()
+    similar_items[item_index] = 0
+    top_similar_indices = np.argsort(similar_items)[::-1][:N]
+
+    user_ratings = train_sparse_matrix[user_index].toarray().flatten()
+    relevant_ratings = user_ratings[top_similar_indices]
+    relevant_similarities = similar_items[top_similar_indices]
+    relevant_popularities = np.array([item_popularity.get(movie_ids[i], 0) for i in top_similar_indices])
+
+    weights = relevant_similarities / (1 + np.log1p(relevant_popularities))  # Inverse log scaling for popularity
+
+    if np.sum(weights) == 0:
+        return np.nan
+
+    return np.dot(relevant_ratings, weights) / np.sum(weights)
 
 # Parallel prediction
 def predict_for_user(user_id, test_ratings_user, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, favor_popular, N):
@@ -91,14 +123,13 @@ def predict_for_user(user_id, test_ratings_user, train_sparse_matrix, movie_ids,
         return user_id, user_preds
 
     for item_id in test_ratings_user['movieId'].tolist():
-        if favor_popular is None:
+        if favor_popular == "favor_popular":
+            user_preds[item_id] = predict_weighted_popularity_favor_popular(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, N)
+        elif favor_popular == "favor_unpopular":
+            user_preds[item_id] = predict_weighted_popularity_favor_unpopular(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, N)
+        elif favor_popular is None:
             user_preds[item_id] = predict_weighted_average(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, N)
-        elif favor_popular is True:
-            user_preds[item_id] = predict_with_popularity(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, favor_popular, N)
-        elif favor_popular is False:
-            user_preds[item_id] = predict_with_popularity(user_id, item_id, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, False, N)
     return user_id, user_preds
-
 
 def parallel_prediction(test_ratings, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, favor_popular, N, processes=4):
     all_user_ids = test_ratings['userId'].unique()
@@ -115,7 +146,6 @@ def parallel_prediction(test_ratings, train_sparse_matrix, movie_ids, user_ids, 
             print(f"Prediction Progress: {progress:.2f}% complete", end='\r')
     print()
     return results
-
 
 # Evaluation metrics
 def calculate_metrics(test_ratings, predicted_ratings, user_ids, movie_ids):
@@ -149,7 +179,6 @@ def calculate_metrics(test_ratings, predicted_ratings, user_ids, movie_ids):
 
     return mae, precision, recall
 
-
 # Main experiment function
 def run_experiment():
     results = []
@@ -162,7 +191,7 @@ def run_experiment():
 
     for N in N_values:
         for sim_name, similarity_matrix in similarity_matrices.items():
-            for favor_popular in [None, True, False]:
+            for favor_popular in [None, "favor_popular", "favor_unpopular"]:
                 start_time = time.time()
                 predicted_ratings = parallel_prediction(
                     test_ratings, train_sparse_matrix, train_movie_ids, train_user_ids, similarity_matrix, item_popularity, favor_popular, N, processes=4
@@ -180,7 +209,6 @@ def run_experiment():
                 gc.collect()
 
     return pd.DataFrame(results)
-
 
 # Run the script
 if __name__ == "__main__":
