@@ -29,6 +29,7 @@ def run_experiment_1():
     train_ratings, test_ratings = train_test_split_ratings(ratings)
     train_sparse_matrix, train_movie_ids, train_user_ids = create_sparse_matrix(train_ratings)
     item_popularity = train_ratings['movieId'].value_counts().to_dict()
+    user_avg_ratings = train_ratings.groupby('userId')['rating'].mean().to_dict()
 
     print("Computing Similarity Matrices...")
     similarity_matrices = {
@@ -57,7 +58,7 @@ def run_experiment_1():
                     favor_popular, N
                 )
                 
-                mae, precision, recall = calculate_metrics(test_ratings, predicted_ratings)
+                mae, precision, recall = calculate_metrics(test_ratings, predicted_ratings, user_avg_ratings)
                 results.append({
                     'N': N,
                     'Similarity': sim_name,
@@ -88,6 +89,7 @@ def run_experiment_2(best_N):
         train_ratings, test_ratings = train_test_split_ratings(ratings, test_size=(1 - T))
         train_sparse_matrix, train_movie_ids, train_user_ids = create_sparse_matrix(train_ratings)
         item_popularity = train_ratings['movieId'].value_counts().to_dict()
+        user_avg_ratings = train_ratings.groupby('userId')['rating'].mean().to_dict()
 
         # Compute similarity matrices
         similarity_matrices = {
@@ -105,7 +107,7 @@ def run_experiment_2(best_N):
                     favor_popular, best_N
                 )
                 
-                mae, precision, recall = calculate_metrics(test_ratings, predicted_ratings)
+                mae, precision, recall = calculate_metrics(test_ratings, predicted_ratings, user_avg_ratings)
                 results.append({
                     'T': T,
                     'Similarity': sim_name,

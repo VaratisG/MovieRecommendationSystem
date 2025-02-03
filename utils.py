@@ -1,6 +1,7 @@
 import time
 import pandas as pd
 import numpy as np
+from collections import defaultdict
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 from scipy.sparse import csr_matrix
@@ -25,18 +26,17 @@ def print_progress(current, total, start_time):
     print(f"\rProgress: {percent:.1f}% | Elapsed: {elapsed:.1f}s | Remaining: {remaining:.1f}s", end="")
 
 def train_test_split_ratings(ratings, test_size=0.2, random_state=42):
-    """
-    Split ratings into training and testing sets, ensuring test set only contains
-    movies and users present in the training set.
-    """
-    # Split the data
+    """Split ratings while ensuring test users/movies exist in training data"""
     train, test = train_test_split(ratings, test_size=test_size, random_state=random_state)
     
-    # Filter test set to only include movies and users present in the training set
-    train_movies = set(train['movieId'])
+    # Filter test set to only include training users and movies
     train_users = set(train['userId'])
+    train_movies = set(train['movieId'])
     
-    test = test[test['movieId'].isin(train_movies) & test['userId'].isin(train_users)]
+    test = test[
+        test['userId'].isin(train_users) & 
+        test['movieId'].isin(train_movies)
+    ]
     
     return train, test
 
@@ -162,37 +162,50 @@ def parallel_prediction(test_ratings, train_sparse_matrix, movie_ids, user_ids, 
     print(f"\nPredictions completed for N={N} in {time.time()-start_time:.1f}s")
     return predictions
 
-def calculate_metrics(test_ratings, predicted_ratings):
+def calculate_metrics(test_ratings, predicted_ratings, user_avg_ratings):
     """
-    Calculate evaluation metrics (MAE, Precision, Recall)
-    Args:
-        test_ratings: Ground truth ratings from test set
-        predicted_ratings: Model predictions
-    Returns:
-        Tuple of (MAE, precision, recall)
+    Calculate MAE, macro-average precision, and macro-average recall
+    using user-specific relevance thresholds.
     """
     test_ratings = test_ratings.reset_index(drop=True)
-    # Calculate Mean Absolute Error
-    mae = np.nanmean(np.abs(test_ratings['rating'] - predicted_ratings))
+    user_stats = defaultdict(lambda: {'tp': 0, 'fp': 0, 'fn': 0})
+    total_error = 0
+    count = 0
 
-    # Initialize confusion matrix components
-    true_positives = 0
-    false_positives = 0
-    false_negatives = 0
-
-    # Calculate precision and recall using 3.5 rating threshold
     for i, pred in enumerate(predicted_ratings):
+        user_id = test_ratings.at[i, 'userId']
+        actual = test_ratings.at[i, 'rating']
+        
         if np.isnan(pred):
             continue
-        actual = test_ratings.at[i, 'rating']
-        if actual >= 3.5 and pred >= 3.5:
-            true_positives += 1
-        elif actual < 3.5 and pred >= 3.5:
-            false_positives += 1
-        elif actual >= 3.5 and pred < 3.5:
-            false_negatives += 1
+            
+        total_error += abs(actual - pred)
+        count += 1
+        
+        threshold = user_avg_ratings.get(user_id, 0)
+        actual_relevant = actual >= threshold
+        pred_relevant = pred >= threshold
 
-    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
-    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+        if actual_relevant and pred_relevant:
+            user_stats[user_id]['tp'] += 1
+        elif not actual_relevant and pred_relevant:
+            user_stats[user_id]['fp'] += 1
+        elif actual_relevant and not pred_relevant:
+            user_stats[user_id]['fn'] += 1
 
-    return mae, precision, recall
+    mae = total_error / count if count > 0 else np.nan
+
+    precisions = []
+    recalls = []
+    
+    for stats in user_stats.values():
+        tp, fp, fn = stats['tp'], stats['fp'], stats['fn']
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        precisions.append(precision)
+        recalls.append(recall)
+
+    macro_precision = np.mean(precisions) if precisions else 0
+    macro_recall = np.mean(recalls) if recalls else 0
+
+    return mae, macro_precision, macro_recall
