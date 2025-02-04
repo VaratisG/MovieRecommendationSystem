@@ -1,5 +1,21 @@
 import numpy as np
 
+def predict(row, train_sparse_matrix, movie_ids, movie_id_to_index, user_id_to_index, similarity_matrix, item_popularity, favor_popular, N):
+    """
+    Route prediction to appropriate function based on weighting type
+    Args:
+        row: Row from test DataFrame containing userId and movieId
+        Other args: Model parameters and data structures
+    Returns:
+        Predicted rating for the user-item pair
+    """
+    user_id = row['userId']
+    item_id = row['movieId']
+    if favor_popular is None:
+        return predict_weighted_average(user_id, item_id, train_sparse_matrix, movie_id_to_index, user_id_to_index, similarity_matrix, N)
+    else:
+        return predict_weighted_popularity(user_id, item_id, train_sparse_matrix, movie_ids, movie_id_to_index, user_id_to_index, similarity_matrix, item_popularity, favor_popular, N)
+    
 def predict_weighted_average(user_id, item_id, train_sparse_matrix, movie_id_to_index, user_id_to_index, similarity_matrix, N):
     """
     Predict rating using similarity-weighted average of top N neighbors.

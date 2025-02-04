@@ -8,8 +8,7 @@ from scipy.sparse import csr_matrix
 from multiprocessing import Pool, shared_memory
 
 from prediction_functions import(
-    predict_weighted_average,
-    predict_weighted_popularity
+    predict
 )
 
 def print_progress(current, total, start_time):
@@ -105,22 +104,6 @@ def compute_similarity(sparse_matrix, method='cosine'):
         return pearson.toarray()
     else:
         raise ValueError("Invalid similarity method. Choose 'cosine' or 'pearson'.")
-
-def predict(row, train_sparse_matrix, movie_ids, movie_id_to_index, user_id_to_index, similarity_matrix, item_popularity, favor_popular, N):
-    """
-    Route prediction to appropriate function based on weighting type
-    Args:
-        row: Row from test DataFrame containing userId and movieId
-        Other args: Model parameters and data structures
-    Returns:
-        Predicted rating for the user-item pair
-    """
-    user_id = row['userId']
-    item_id = row['movieId']
-    if favor_popular is None:
-        return predict_weighted_average(user_id, item_id, train_sparse_matrix, movie_id_to_index, user_id_to_index, similarity_matrix, N)
-    else:
-        return predict_weighted_popularity(user_id, item_id, train_sparse_matrix, movie_ids, movie_id_to_index, user_id_to_index, similarity_matrix, item_popularity, favor_popular, N)
 
 def parallel_prediction(test_ratings, train_sparse_matrix, movie_ids, user_ids, similarity_matrix, item_popularity, favor_popular, N):
     """
