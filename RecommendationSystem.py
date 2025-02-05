@@ -132,7 +132,9 @@ def run_experiment_3(best_N):
     print("Starting Experiment 3...")
     
     # Define filtering combinations (M, M') to test
-    filter_values = [(5, 5), (10, 10), (20, 20)]  # Example values, adjust as needed
+    # M for minimum rates per user
+    # M' for minimim rates per movie
+    filter_values = [(20, 30), (40, 60), (80, 120)]  # Example values, adjust as needed
     results = []
     
     for M, M_prime in filter_values:
@@ -145,6 +147,7 @@ def run_experiment_3(best_N):
         train_ratings, test_ratings = train_test_split_ratings(filtered_ratings, test_size=0.2)
         train_sparse_matrix, train_movie_ids, train_user_ids = create_sparse_matrix(train_ratings)
         item_popularity = train_ratings['movieId'].value_counts().to_dict()
+        user_avg_ratings = train_ratings.groupby('userId')['rating'].mean().to_dict()
 
         print("Computing Similarity Matrices...")
         similarity_matrices = {
@@ -169,7 +172,7 @@ def run_experiment_3(best_N):
                 )
                 
                 # Calculate metrics
-                mae, precision, recall = calculate_metrics(test_ratings, predicted_ratings)
+                mae, precision, recall = calculate_metrics(test_ratings, predicted_ratings, user_avg_ratings)
                 
                 # Calculate matrix density
                 num_users, num_items = train_sparse_matrix.shape
