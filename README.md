@@ -10,7 +10,6 @@ This project implements a Movie Recommendation System as part of a programming a
 - [How to Run](#how-to-run)
 - [Experiments](#experiments)
 - [Results](#results)
-- [License](#license)
 
 ## Features
 - **Collaborative Filtering**: Utilizes user-item interactions to make predictions.
@@ -44,7 +43,6 @@ pip install pandas numpy scipy scikit-learn
 
 3. Run an experiment:
 python RecommendationSystem.py -1 # Replace -1 with -2 or -3 for other experiments
-
 
 ## Experiments
 The project includes three main experiments to evaluate the recommendation system:
